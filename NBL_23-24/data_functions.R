@@ -156,7 +156,13 @@ get_historical_data <- function() {
               by = c("match_id", "name"),
               relationship = "many-to-many") |> 
       mutate(first_name = str_replace(first_name, "^Mitch$", "Mitchell")) |> 
-      mutate(first_name = str_replace(first_name, "^Jordon$", "Jordan"))
+      mutate(first_name = str_replace(first_name, "^Jordon$", "Jordan")) |> 
+      mutate(first_name = str_replace(first_name, "^Dj$", "DJ")) |>
+      mutate(family_name = str_replace(family_name, "^Mccarron$", "McCarron")) |>
+      mutate(family_name = str_replace(family_name, "^Le'afa$", "Le'Afa")) |>
+      mutate(family_name = str_replace(family_name, "^Mcdaniel$", "McDaniel")) |>
+      mutate(family_name = str_replace(family_name, "^Kell Iii$", "Kell")) |>
+      mutate(family_name = str_replace(family_name, "^Mcveigh$", "McVeigh"))
 }
 
 ##%######################################################%##

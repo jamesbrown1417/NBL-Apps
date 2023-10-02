@@ -9,6 +9,7 @@ library(shiny)
 library(shinythemes)
 library(tidyverse)
 library(DT)
+library(readxl)
 library(httr2)
 library(nblR)
 library(googlesheets4)
@@ -22,12 +23,13 @@ drive_auth(cache = ".secrets", email = "cuzzy.punting@gmail.com")
 gs4_auth(token = drive_token())
 
 # Load functions----------------------------------------------------------------
-source("data_functions.R")
+source("data_functions.R", local = TRUE)
 
 # Data--------------------------------------------------------------------------
 combined_stats_table <- get_historical_data()
 supercoach_data <- get_supercoach_data()
 season_schedule_2023_2024 <- read_rds("season_schedule_2023_2024.rds")
+player_positions_dvp <- read_excel("NBL-Players-List.xlsx")
 
 # Google Sheets Data------------------------------------------------------------
 ss_name <- gs4_find("NBL Data")
@@ -72,15 +74,15 @@ get_player_points_emp_prob <- function(line_value) {
   get_emp_prob(combined_stats_table,
                player_points_data$player_name,
                line = line_value,
-               player_points) |> 
+               player_points) |>
     mutate(line = line_value)
 }
 
 player_points_data <-
-  player_points_data |> 
-  mutate(implied_prob_over = round(1/over_price, 3)) |> 
-  left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows()) |> 
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |> 
+  player_points_data |>
+  mutate(implied_prob_over = round(1/over_price, 3)) |>
+  left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows()) |>
+  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
   select(-games_played)
 
 # Assists
@@ -88,15 +90,15 @@ get_player_assists_emp_prob <- function(line_value) {
   get_emp_prob(combined_stats_table,
                player_assists_data$player_name,
                line = line_value,
-               player_assists) |> 
+               player_assists) |>
     mutate(line = line_value)
 }
 
 player_assists_data <-
-  player_assists_data |> 
-  mutate(implied_prob_over = round(1/over_price, 3)) |> 
-  left_join(map(unique(player_assists_data$line), get_player_assists_emp_prob) |> bind_rows()) |> 
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |> 
+  player_assists_data |>
+  mutate(implied_prob_over = round(1/over_price, 3)) |>
+  left_join(map(unique(player_assists_data$line), get_player_assists_emp_prob) |> bind_rows()) |>
+  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
   select(-games_played)
 
 # Rebounds
@@ -104,15 +106,15 @@ get_player_rebounds_emp_prob <- function(line_value) {
   get_emp_prob(combined_stats_table,
                player_rebounds_data$player_name,
                line = line_value,
-               player_rebounds_total) |> 
+               player_rebounds_total) |>
     mutate(line = line_value)
 }
 
 player_rebounds_data <-
-  player_rebounds_data |> 
-  mutate(implied_prob_over = round(1/over_price, 3)) |> 
-  left_join(map(unique(player_rebounds_data$line), get_player_rebounds_emp_prob) |> bind_rows()) |> 
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |> 
+  player_rebounds_data |>
+  mutate(implied_prob_over = round(1/over_price, 3)) |>
+  left_join(map(unique(player_rebounds_data$line), get_player_rebounds_emp_prob) |> bind_rows()) |>
+  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
   select(-games_played)
 
 # Get new category for player arbs----------------------------------------------
@@ -197,11 +199,29 @@ player_rebounds_arbs <-
 player_names <-
 combined_stats_table |>
     mutate(player_full_name = paste(first_name, family_name)) |> 
-    summarise(total_points = sum(player_points, na.rm = TRUE), .by = player_full_name) |> 
-    arrange(desc(total_points)) |> 
+    summarise(total_points = sum(player_points, na.rm = TRUE), .by = player_full_name, played_2022_23 = sum(season %in% c("2023-2024", "2023-2022"))) |> 
+    arrange(desc(played_2022_23), desc(total_points)) |> 
     filter(player_full_name != "NA NA") |>
     distinct(player_full_name) |> 
     pull(player_full_name)
+
+# Player Teams By Season--------------------------------------------------------
+player_teams_by_season <-
+  combined_stats_table |>
+  mutate(player_full_name = paste(first_name, family_name)) |>
+  group_by(player_full_name, season) |>
+  summarise(team = first(name)) |>
+  filter(!is.na(team) & !is.na(season))
+
+# Function to get all team mates for a given player name and season
+get_player_team_mates <-
+  function(player_name, season_name) {
+    player_teams_by_season |>
+        filter(season == season_name) |>
+        group_by(team) |> 
+        filter(any(player_full_name == player_name)) |>
+        pull(player_full_name)
+}
 
 # Create function to filter and display player data
 display_player_stats <- function(player_name, season_name, n_games) {
@@ -335,7 +355,88 @@ with_without <- function(player_name, team_mate, season_name) {
     
     # Combine and output
     bind_rows(both, just_player) |>
-        relocate(teammate, with_teammate, .after =  player_full_name)
+        relocate(teammate, with_teammate, .after =  player_full_name) |> 
+      mutate(ppg = round(ppg, 2), apg = round(apg, 2), rpg = round(rpg, 2))
+}
+
+# Performance vs team-----------------------------------------------------------
+
+# Get relevant stats and join with positions
+stats_2023_2024 <-
+  combined_stats_table |>
+  filter(season == "2023-2024") |>
+  transmute(
+    player_name = paste(first_name, family_name),
+    player_team = name,
+    opposition_team = opp_name,
+    round_number,
+    starter,
+    match_time_utc,
+    home_away,
+    starter,
+    player_minutes = ms(player_minutes),
+    player_points,
+    player_three_pointers_made,
+    player_rebounds_total,
+    player_assists,
+    player_steals,
+    player_blocks
+  ) |> 
+  left_join(player_positions_dvp) |> 
+  filter(!is.na(Rating)) |>
+  rename(position = position_1)
+
+# Get only 1 position column
+stats_2023_2024 <-
+  stats_2023_2024 |>
+  bind_rows(
+    stats_2023_2024 |>
+      select(-position) |>
+      filter(!is.na(position_2)) |>
+      rename(position = position_2)
+  ) |> 
+  select(-position_2)
+
+player_position_performance <-
+  stats_2023_2024 |> 
+  group_by(opposition_team, position) |> 
+  summarise(sample_size = n(),
+            avg_points = round(mean(player_points), 2),
+            avg_assists = round(mean(player_assists), 2),
+            avg_rebounds = round(mean(player_rebounds_total), 2)) |>
+  arrange(position, desc(avg_points)) |> 
+  ungroup()
+
+# Function to get last n games performance--------------------------------------
+get_last_n_stats <- function(n_games = 5, player_full_name) {
+  return_df <-
+    combined_stats_table |>
+    mutate(player_name = paste(first_name, family_name)) |>
+    filter(player_name == player_full_name) |>
+    arrange(desc(match_time_utc)) |>
+    slice_head(n = n_games) |>
+    select(
+      season,
+      round_number,
+      match_time_utc,
+      opp_name,
+      full_score,
+      opp_score,
+      home_away,
+      starter,
+      matches("^player")
+    ) |>
+    t() |>
+    as.data.frame()
+  
+  names(return_df) <- str_remove_all(names(return_df), "V")
+  
+  return_df$var <- row.names(return_df)
+  
+  return_df |>
+    relocate(var, .before = `1`) |> 
+    as_tibble()
+    
 }
 
 ##%######################################################%##
@@ -426,7 +527,59 @@ ui <- fluidPage(
              mainPanel(
                h3("Additional Data Table"),
                dataTableOutput("additional_data_table")
-             )))
+             ))),
+    # Third tab for Player Performance with and without a team-mate
+    tabPanel("Player Performance with and without a team-mate",
+             sidebarLayout(sidebarPanel(
+               selectInput("player_name_2", "Enter Player's Name", choices = player_names),
+               selectInput("team_mate", "Enter Team-mate's Name", choices = player_names),
+               selectInput(
+                 "season_name_2",
+                 "Season",
+                 choices = c(
+                   "2023-2024",
+                   "2022-2023",
+                   "2021-2022",
+                   "2020-2021",
+                   "2019-2020",
+                   "2018-2019",
+                   "2017-2018",
+                   "2016-2017",
+                   "2015-2016"
+                 )
+               )
+             ),
+             mainPanel(
+               h3(""),
+               dataTableOutput("player_stats_table_2")
+             ))),
+    
+    # Fourth tab for Player Performance vs Team
+    tabPanel("Player Performance vs Team",
+             sidebarLayout(sidebarPanel(
+               selectInput("position", "Enter Position", choices = player_position_performance$position, selectize = TRUE, multiple = TRUE, selected = player_position_performance$position),
+               selectInput("opposition_team", "Enter Opposition Team", choices = player_position_performance$opposition_team, selectize = TRUE, multiple = TRUE, selected = player_position_performance$opposition_team)
+             ),
+             mainPanel(
+               h3(""),
+               dataTableOutput("player_stats_table_3")
+             ))),
+    
+    # Fifth tab for last n games stats
+    tabPanel("Last n Games Stats",
+             sidebarLayout(sidebarPanel(
+               selectInput("player_name_3", "Enter Player's Name", choices = player_names),
+               numericInput(
+                 "n_games_2",
+                 "Number of Games to Display",
+                 value = 5,
+                 min = 1
+               )
+             ),
+             mainPanel(
+               h3(""),
+               dataTableOutput("player_stats_table_4")
+             ))),
   )
 )
 
@@ -445,6 +598,20 @@ server <- function(input, output) {
     output$player_stats_plot <- renderPlot({
         data <- display_player_stats(input$player_name, input$season_name, input$n_games)
         display_empirical_probabilities(data, input$stat, input$line)
+    })
+    
+    output$player_stats_table_2 <- renderDataTable({
+      with_without(player_name = input$player_name_2, team_mate = input$team_mate, season_name = input$season_name_2)
+    })
+    
+    observe(updateSelectInput(session = getDefaultReactiveDomain(), "team_mate", choices = get_player_team_mates(input$player_name_2, input$season_name_2)))
+    
+    output$player_stats_table_3 <- renderDataTable({
+      player_position_performance |> filter(position %in% input$position & opposition_team %in% input$opposition_team)
+    })
+    
+    output$player_stats_table_4 <- renderDataTable({
+      get_last_n_stats(player_full_name = input$player_name_3, n_games = input$n_games_2)
     })
     
     output$additional_data_table <- renderDataTable({
