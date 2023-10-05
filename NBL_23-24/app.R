@@ -255,7 +255,7 @@ display_empirical_probabilities <-
         if (stat == "player_points") {
             label = "Points"
         }
-        else if (stat == "player_rebounds") {
+        else if (stat == "player_rebounds_total") {
             label = "Rebounds"
         }
         else {

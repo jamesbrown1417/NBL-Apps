@@ -162,8 +162,9 @@ get_historical_data <- function() {
       mutate(family_name = str_replace(family_name, "^Le'afa$", "Le'Afa")) |>
       mutate(family_name = str_replace(family_name, "^Mcdaniel$", "McDaniel")) |>
       mutate(family_name = str_replace(family_name, "^Kell Iii$", "Kell")) |>
-      mutate(family_name = str_replace(family_name, "^Mcveigh$", "McVeigh"))
-}
+      mutate(family_name = str_replace(family_name, "^Mcveigh$", "McVeigh")) |> 
+      mutate(family_name = str_replace(family_name, "^Mcdowell$", "McDowell"))
+    }
 
 ##%######################################################%##
 #                                                          #
