@@ -83,7 +83,9 @@ player_points_data <-
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows()) |>
   mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
-  select(-games_played)
+  select(-games_played) |> 
+  ungroup()
+
 
 # Assists
 get_player_assists_emp_prob <- function(line_value) {
@@ -99,7 +101,9 @@ player_assists_data <-
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_assists_data$line), get_player_assists_emp_prob) |> bind_rows()) |>
   mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
-  select(-games_played)
+  select(-games_played) |> 
+  ungroup()
+
 
 # Rebounds
 get_player_rebounds_emp_prob <- function(line_value) {
@@ -115,7 +119,8 @@ player_rebounds_data <-
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_rebounds_data$line), get_player_rebounds_emp_prob) |> bind_rows()) |>
   mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
-  select(-games_played)
+  select(-games_played) |> 
+  ungroup()
 
 # Get new category for player arbs----------------------------------------------
 
@@ -212,6 +217,16 @@ player_teams_by_season <-
   group_by(player_full_name, season) |>
   summarise(team = first(name)) |>
   filter(!is.na(team) & !is.na(season))
+
+# Current player names with props-----------------------------------------------
+prop_player_names <-
+  bind_rows(
+    player_points_data |> distinct(player_name),
+    player_assists_data |> distinct(player_name),
+    player_rebounds_data |> distinct(player_name)
+  ) |> 
+  distinct(player_name) |>
+  pull(player_name)
 
 # Function to get all team mates for a given player name and season
 get_player_team_mates <-
@@ -518,11 +533,13 @@ ui <- fluidPage(
                    "Rebound Arbs"
                  )
                ),
+               selectInput("player_names_props", "Enter Player's Name", choices = prop_player_names, multiple = TRUE),
                selectizeInput("agencies",
                               "Choose Agencies",
                               choices = unique(player_points_data$agency),
                               multiple = TRUE,
-                              selected = unique(player_points_data$agency))
+                              selected = unique(player_points_data$agency)),
+               checkboxInput("unders_shown", "Show Only Markets with Both Unders and Overs", value = FALSE)
              ),
              mainPanel(
                h3("Additional Data Table"),
@@ -579,7 +596,7 @@ ui <- fluidPage(
              mainPanel(
                h3(""),
                dataTableOutput("player_stats_table_4")
-             ))),
+             )))
   )
 )
 
@@ -615,14 +632,38 @@ server <- function(input, output) {
     })
     
     output$additional_data_table <- renderDataTable({
-      switch(input$additional_data,
-             "H2H" = h2h_data |> filter(home_agency %in% input$agencies & away_agency %in% input$agencies),
-             "Player Points" = player_points_data |> filter(agency %in% input$agencies),
-             "Player Rebounds" = player_rebounds_data |> filter(agency %in% input$agencies),
-             "Player Assists" = player_assists_data |> filter(agency %in% input$agencies),
-             "Point Arbs" = point_arbs_data |> filter(over_agency %in% input$agencies & under_agency %in% input$agencies),
-             "Assist Arbs" = assist_arbs_data |> filter(over_agency %in% input$agencies & under_agency %in% input$agencies),
-             "Rebound Arbs" = rebound_arbs_data |> filter(over_agency %in% input$agencies & under_agency %in% input$agencies))
+      data_to_display <- switch(input$additional_data,
+                                "H2H" = h2h_data,
+                                "Player Points" = player_points_data,
+                                "Player Rebounds" = player_rebounds_data,
+                                "Player Assists" = player_assists_data,
+                                "Point Arbs" = player_points_arbs,
+                                "Assist Arbs" = player_assists_arbs,
+                                "Rebound Arbs" = player_rebounds_arbs)
+      
+      # Common filter for the first four cases
+      if (input$additional_data %in% c("Player Points", "Player Rebounds", "Player Assists")) {
+        data_to_display <- data_to_display |>
+          filter(agency %in% input$agencies)
+        if (input$unders_shown) {
+          data_to_display <- data_to_display |> filter(!is.na(under_price))
+        }
+        if (length(input$player_names_props) > 0) {
+          data_to_display <- data_to_display |> filter(player_name %in% input$player_names_props)
+        }
+      }
+      
+      # Special filter for H2H
+      if (input$additional_data == "H2H") {
+        data_to_display <- data_to_display |> filter(home_agency %in% input$agencies & away_agency %in% input$agencies)
+      }
+      
+      # Special filters for Arbs
+      if (input$additional_data %in% c("Point Arbs", "Assist Arbs", "Rebound Arbs")) {
+        data_to_display <- data_to_display |> filter(over_agency %in% input$agencies & under_agency %in% input$agencies)
+      }
+      
+      data_to_display
     })
 }
 
