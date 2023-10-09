@@ -224,8 +224,8 @@ get_player_team_mates <-
 }
 
 # Create function to filter and display player data
-display_player_stats <- function(player_name, season_name, n_games) {
-    combined_stats_table |>
+display_player_stats <- function(player_name, season_name, n_games, home_or_away = c("home", "away")) {
+  combined_stats_table |>
         mutate(player_full_name = paste(first_name, family_name)) |>
         filter(player_full_name == player_name) |>
         filter(season == season_name) |>
@@ -245,7 +245,8 @@ display_player_stats <- function(player_name, season_name, n_games) {
                player_blocks,
                player_minutes
                ) |> 
-        slice_head(n = n_games)
+        slice_head(n = n_games) |> 
+    filter(home_away %in% home_or_away)
 }
 
 # Function to plot hit rate for prop lines
@@ -439,6 +440,50 @@ get_last_n_stats <- function(n_games = 5, player_full_name) {
     
 }
 
+# Team Trends Analysis----------------------------------------------------------
+
+# Minutes Played
+calculate_player_minutes <- function(team) {
+combined_stats_table |> 
+  filter(season == "2023-2024") |>
+  filter(name == team) |> 
+  select(first_name, family_name, round_number, match_time_utc, starter, player_minutes) |> 
+  arrange(match_time_utc) |> 
+  group_by(match_time_utc) |>
+  mutate(match_number = cur_group_id()) |> 
+  relocate(match_number, .after = round_number) |>
+  group_by(first_name, family_name) |>
+  mutate(player_minutes = ms(player_minutes)) |> 
+  mutate(avg_mins = mean(period_to_seconds(player_minutes), na.rm = TRUE)) |>
+  mutate(avg_mins = round(seconds_to_period(avg_mins), digits = 0)) |>
+  ungroup() |>
+  mutate(player_name = paste(first_name, family_name)) |> 
+  select(player_name, avg_mins, match_number, player_minutes) |> 
+  pivot_wider(names_from = match_number, values_from = player_minutes) |> 
+  select(player_name, any_of(as.character(1:28)), AVG = avg_mins) |> 
+  arrange(desc(AVG))}
+
+# Usage
+calculate_player_usage <- function(team) {
+  combined_stats_table |> 
+    filter(season == "2023-2024") |>
+    filter(name == team) |> 
+    select(first_name, family_name, round_number, match_time_utc, usage) |> 
+    arrange(match_time_utc) |> 
+    group_by(match_time_utc) |>
+    mutate(match_number = cur_group_id()) |> 
+    relocate(match_number, .after = round_number) |>
+    group_by(first_name, family_name) |>
+    mutate(avg_usage = mean(usage, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(player_name = paste(first_name, family_name)) |> 
+    select(player_name, avg_usage, match_number, usage) |> 
+    pivot_wider(names_from = match_number, values_from = usage) |> 
+    select(player_name, any_of(as.character(1:28)), AVG = avg_usage) |> 
+    arrange(desc(AVG))}
+
+calculate_team_trends("Adelaide 36ers")
+
 ##%######################################################%##
 #                                                          #
 ####                        App                         ####
@@ -479,8 +524,16 @@ ui <- fluidPage(
                  numericInput(
                    "n_games",
                    "Number of Games to Display",
-                   value = 10,
+                   value = 35,
                    min = 1
+                 ),
+                 selectInput(
+                   "home_games_only",
+                   "Show Which Games?",
+                   choices = list("Home" = "home", "Away" = "away"),
+                   multiple = TRUE,
+                   selected = c("home", "away"),
+                   selectize = TRUE
                  ),
                  selectInput(
                    "stat",
@@ -492,7 +545,7 @@ ui <- fluidPage(
                    ),
                    selected = "player_points"
                  ),
-                 numericInput("line", "Set Prop Line", value = 20, min = 0),
+                 numericInput("line", "Set Prop Line", value = 10, min = 0),
                  h3("Player Stats Plot"),
                  plotOutput("player_stats_plot", height = "400px")
                ),
@@ -592,11 +645,11 @@ ui <- fluidPage(
 server <- function(input, output) {
     
     output$player_stats_table <- renderDataTable({
-        display_player_stats(input$player_name, input$season_name, input$n_games)
+        display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only)
     })
     
     output$player_stats_plot <- renderPlot({
-        data <- display_player_stats(input$player_name, input$season_name, input$n_games)
+        data <- display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only)
         display_empirical_probabilities(data, input$stat, input$line)
     })
     

@@ -86,15 +86,6 @@ get_historical_data <- function() {
       match_points_fast_break = points_fast_break,
       match_points_in_the_paint = points_in_the_paint
     ) |>
-    select(-match_minutes) |>
-    mutate(
-      possessions = 0.5 * (
-        match_field_goals_attempted -
-          match_rebounds_offensive +
-          match_turnovers +
-          0.4 * match_free_throws_attempted
-      )
-    ) |>
     filter(!is.na(p1_score) &
              !is.na(p2_score) &
              !is.na(p3_score) &
@@ -137,24 +128,48 @@ get_historical_data <- function() {
   home_team_match_data <-
     team_box_scores |>
     filter(home_away == "home") |>
-    select(match_id, home_name = name, home_possessions = possessions)
+    select(match_id,
+           match_minutes,
+           home_name = name,
+           home_fga = match_field_goals_attempted,
+           home_fgm = match_field_goals_made,
+           home_fta = match_free_throws_attempted,
+           home_dreb = match_rebounds_defensive,
+           home_oreb = match_rebounds_offensive,
+           home_to = match_turnovers)
   
   away_team_match_data <-
     team_box_scores |>
     filter(home_away == "away") |> 
-    select(match_id, home_away, away_name = name, away_possessions = possessions)
+    select(match_id,
+           match_minutes,
+           away_name = name,
+           away_fga = match_field_goals_attempted,
+           away_fgm = match_field_goals_made,
+           away_fta = match_free_throws_attempted,
+           away_dreb = match_rebounds_defensive,
+           away_oreb = match_rebounds_offensive,
+           away_to = match_turnovers)
   
-  # get opp team possessions
-  possessions <-
+  # get PACE
+  pace <-
     home_team_match_data |> 
-    left_join(away_team_match_data, by = "match_id") |> 
-    mutate(possessions = (home_possessions + away_possessions) / 2)
+    left_join(away_team_match_data, by = c("match_id", "match_minutes")) |> 
+    mutate(match_minutes = as.integer(str_extract(match_minutes, "[0-9]+(?=:)"))) |>
+    mutate(match_minutes = round(match_minutes / 5) * 5) |>
+    filter(match_minutes >= 200) |> 
+    mutate(home_possessions = (home_fga + 0.4 * home_fta - 1.07 * (home_oreb / (home_oreb + away_dreb)) * (home_fga - home_fgm) + home_to)) |>
+    mutate(away_possessions = (away_fga + 0.4 * away_fta - 1.07 * (away_oreb / (away_oreb + home_dreb)) * (away_fga - away_fgm) + away_to)) |>
+    mutate(possessions = (home_possessions + away_possessions) / 2) |>
+    mutate(pace = 200*(possessions) / match_minutes) |> 
+    transmute(match_id, possessions = round(possessions, 1), pace = round(pace, 1))
   
   # Combine
     team_box_scores |>
     full_join(player_box_scores,
               by = c("match_id", "name"),
               relationship = "many-to-many") |> 
+    left_join(pace) |> 
       mutate(first_name = str_replace(first_name, "^Mitch$", "Mitchell")) |> 
       mutate(first_name = str_replace(first_name, "^Jordon$", "Jordan")) |> 
       mutate(first_name = str_replace(first_name, "^Dj$", "DJ")) |>
@@ -163,7 +178,10 @@ get_historical_data <- function() {
       mutate(family_name = str_replace(family_name, "^Mcdaniel$", "McDaniel")) |>
       mutate(family_name = str_replace(family_name, "^Kell Iii$", "Kell")) |>
       mutate(family_name = str_replace(family_name, "^Mcveigh$", "McVeigh")) |> 
-      mutate(family_name = str_replace(family_name, "^Mcdowell$", "McDowell"))
+      mutate(family_name = str_replace(family_name, "^Mcdowell$", "McDowell")) |> 
+      mutate(match_minutes = as.integer(str_extract(match_minutes, "[0-9]+(?=:)"))) |>
+      mutate(match_minutes = round(match_minutes / 5) * 5) |> 
+      mutate(usage = (100*(0.33*player_assists + player_field_goals_attempted + 0.44*player_free_throws_attempted + player_turnovers)) / possessions)
     }
 
 ##%######################################################%##
