@@ -252,6 +252,7 @@ display_player_stats <- function(player_name, season_name, n_games, home_or_away
                team = name,
                opposition = opp_name,
                home_away,
+               pace,
                starter,
                player_points,
                player_rebounds_total,
@@ -443,7 +444,8 @@ get_last_n_stats <- function(n_games = 5, player_full_name) {
       matches("^player")
     ) |>
     t() |>
-    as.data.frame()
+    as.data.frame() |> 
+    select(-player_name)
   
   names(return_df) <- str_remove_all(names(return_df), "V")
   
@@ -469,35 +471,16 @@ combined_stats_table |>
   relocate(match_number, .after = round_number) |>
   group_by(first_name, family_name) |>
   mutate(player_minutes = ms(player_minutes)) |> 
-  mutate(avg_mins = mean(period_to_seconds(player_minutes), na.rm = TRUE)) |>
-  mutate(avg_mins = round(seconds_to_period(avg_mins), digits = 0)) |>
+  mutate(player_minutes = period_to_seconds(player_minutes)/60) |>
+  mutate(avg_mins = mean(player_minutes, na.rm = TRUE)) |>
+  mutate(avg_mins = round(avg_mins, digits = 2)) |>
+  mutate(player_minutes = round(player_minutes, digits = 2)) |>
   ungroup() |>
   mutate(player_name = paste(first_name, family_name)) |> 
   select(player_name, avg_mins, match_number, player_minutes) |> 
   pivot_wider(names_from = match_number, values_from = player_minutes) |> 
   select(player_name, any_of(as.character(1:28)), AVG = avg_mins) |> 
   arrange(desc(AVG))}
-
-# Usage
-calculate_player_usage <- function(team) {
-  combined_stats_table |> 
-    filter(season == "2023-2024") |>
-    filter(name == team) |> 
-    select(first_name, family_name, round_number, match_time_utc, usage) |> 
-    arrange(match_time_utc) |> 
-    group_by(match_time_utc) |>
-    mutate(match_number = cur_group_id()) |> 
-    relocate(match_number, .after = round_number) |>
-    group_by(first_name, family_name) |>
-    mutate(avg_usage = mean(usage, na.rm = TRUE)) |>
-    ungroup() |>
-    mutate(player_name = paste(first_name, family_name)) |> 
-    select(player_name, avg_usage, match_number, usage) |> 
-    pivot_wider(names_from = match_number, values_from = usage) |> 
-    select(player_name, any_of(as.character(1:28)), AVG = avg_usage) |> 
-    arrange(desc(AVG))}
-
-calculate_team_trends("Adelaide 36ers")
 
 ##%######################################################%##
 #                                                          #
@@ -649,7 +632,17 @@ ui <- fluidPage(
              mainPanel(
                h3(""),
                dataTableOutput("player_stats_table_4")
-             )))
+             ))),
+    
+    # Sixth tab for Team - Player Metrics
+    tabPanel("Team - Player Metrics",
+             sidebarLayout(sidebarPanel(
+               selectInput("team_name", "Enter Team's Name", choices = unique(combined_stats_table$name)),
+             ),
+             mainPanel(
+               h3(""),
+               dataTableOutput("player_stats_table_5")
+             ))),
   )
 )
 
@@ -682,6 +675,10 @@ server <- function(input, output) {
     
     output$player_stats_table_4 <- renderDataTable({
       get_last_n_stats(player_full_name = input$player_name_3, n_games = input$n_games_2)
+    })
+    
+    output$player_stats_table_5 <- renderDataTable({
+      calculate_player_minutes(team = input$team_name)
     })
     
     output$additional_data_table <- renderDataTable({

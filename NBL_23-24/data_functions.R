@@ -282,3 +282,23 @@ get_emp_prob <- function(stats_data, player_list, stat, line, season_name = "202
     arrange(desc(emp_prob_over)) |> 
     mutate(emp_prob_over = round(emp_prob_over, 3))
 }
+
+##%######################################################%##
+#                                                          #
+####           Market Manipulation Calculator           ####
+#                                                          #
+##%######################################################%##
+
+market_manipulation_calc <-
+  function(odds_a, stake_a, odds_b, stake_b) {
+    # If a wins
+    a_wins <- odds_a * stake_a - stake_a - stake_b
+    
+    # If b wins
+    b_wins <- odds_b * stake_b - stake_a - stake_b
+    
+    # Get equivalent odds for just a bet on b
+    equiv_odds <- 1 + (abs(b_wins) / abs(a_wins))
+    
+    glue::glue("This is the equivalent of betting ${abs(a_wins)} on outcome b at {round(equiv_odds, 2)}")
+  }
