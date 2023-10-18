@@ -71,54 +71,125 @@ player_rebounds_data <-
 
 # Points
 get_player_points_emp_prob <- function(line_value) {
+  # Last Season
+  last_season <-
   get_emp_prob(combined_stats_table,
                player_points_data$player_name,
                line = line_value,
                player_points) |>
     mutate(line = line_value)
+  
+  # Last 3
+  last_3 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_points_data$player_name,
+                         line = line_value,
+                         stat = player_points,
+                         n_games = 3) |> 
+    rename(emp_prob_last_3 = emp_prob_last_n)
+  
+  # Last 5
+  last_5 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_points_data$player_name,
+                         line = line_value,
+                         stat = player_points,
+                         n_games = 5) |> 
+    rename(emp_prob_last_5 = emp_prob_last_n)
+  
+  list(last_season, last_3, last_5) |> reduce(left_join)
 }
 
 player_points_data <-
   player_points_data |>
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows()) |>
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_season = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_3 = round(emp_prob_last_3 - implied_prob_over, 3)) |>
+  mutate(diff_last_5 = round(emp_prob_last_5 - implied_prob_over, 3)) |>
   select(-games_played) |> 
   ungroup()
 
 
 # Assists
 get_player_assists_emp_prob <- function(line_value) {
-  get_emp_prob(combined_stats_table,
-               player_assists_data$player_name,
-               line = line_value,
-               player_assists) |>
+  # Last Season
+  last_season <-
+    get_emp_prob(combined_stats_table,
+                 player_assists_data$player_name,
+                 line = line_value,
+                 player_assists) |>
     mutate(line = line_value)
+  
+  # Last 3
+  last_3 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_assists_data$player_name,
+                         line = line_value,
+                         stat = player_assists,
+                         n_games = 3) |> 
+    rename(emp_prob_last_3 = emp_prob_last_n)
+  
+  # Last 5
+  last_5 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_assists_data$player_name,
+                         line = line_value,
+                         stat = player_assists,
+                         n_games = 5) |> 
+    rename(emp_prob_last_5 = emp_prob_last_n)
+  
+  list(last_season, last_3, last_5) |> reduce(left_join)
 }
 
 player_assists_data <-
   player_assists_data |>
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_assists_data$line), get_player_assists_emp_prob) |> bind_rows()) |>
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_season = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_3 = round(emp_prob_last_3 - implied_prob_over, 3)) |>
+  mutate(diff_last_5 = round(emp_prob_last_5 - implied_prob_over, 3)) |>
   select(-games_played) |> 
   ungroup()
 
-
 # Rebounds
 get_player_rebounds_emp_prob <- function(line_value) {
-  get_emp_prob(combined_stats_table,
-               player_rebounds_data$player_name,
-               line = line_value,
-               player_rebounds_total) |>
+  # Last Season
+  last_season <-
+    get_emp_prob(combined_stats_table,
+                 player_rebounds_data$player_name,
+                 line = line_value,
+                 player_rebounds_total) |>
     mutate(line = line_value)
+  
+  # Last 3
+  last_3 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_rebounds_data$player_name,
+                         line = line_value,
+                         stat = player_rebounds_total,
+                         n_games = 3) |> 
+    rename(emp_prob_last_3 = emp_prob_last_n)
+  
+  # Last 5
+  last_5 <-
+    get_emp_prob_n_games(stats_data = combined_stats_table,
+                         player_list = player_rebounds_data$player_name,
+                         line = line_value,
+                         stat = player_rebounds_total,
+                         n_games = 5) |> 
+    rename(emp_prob_last_5 = emp_prob_last_n)
+  
+  list(last_season, last_3, last_5) |> reduce(left_join)
 }
 
 player_rebounds_data <-
   player_rebounds_data |>
   mutate(implied_prob_over = round(1/over_price, 3)) |>
   left_join(map(unique(player_rebounds_data$line), get_player_rebounds_emp_prob) |> bind_rows()) |>
-  mutate(diff = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_season = round(emp_prob_over - implied_prob_over, 3)) |>
+  mutate(diff_last_3 = round(emp_prob_last_3 - implied_prob_over, 3)) |>
+  mutate(diff_last_5 = round(emp_prob_last_5 - implied_prob_over, 3)) |>
   select(-games_played) |> 
   ungroup()
 

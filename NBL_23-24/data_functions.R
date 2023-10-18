@@ -257,7 +257,7 @@ get_supercoach_data <- function() {
 
 ##%######################################################%##
 #                                                          #
-####            Get Empirical Probabilities             ####
+####      Get Empirical Probabilities - Season          ####
 #                                                          #
 ##%######################################################%##
 
@@ -281,6 +281,37 @@ get_emp_prob <- function(stats_data, player_list, stat, line, season_name = "202
     filter(games_played >= 10) |> 
     arrange(desc(emp_prob_over)) |> 
     mutate(emp_prob_over = round(emp_prob_over, 3))
+}
+
+##%######################################################%##
+#                                                          #
+####      Get last n game empirical probabilities       ####
+#                                                          #
+##%######################################################%##
+
+
+# Function to calculate empirical probabilities
+get_emp_prob_n_games <- function(stats_data, player_list, stat, line, n_games = 3) {
+  
+  # Filter to players
+  combined_stats_table |>
+    mutate(player_name = paste(first_name, family_name)) |>
+    filter(player_name %in% player_list) |>
+    
+    # Group by player
+    group_by(player_name) |>
+    
+    # Arrange and get last n games
+    arrange(player_name, desc((match_time_utc))) |> 
+    slice_head(n = n_games) |> 
+    
+    # Calculate empirical probability
+    summarise(games_played = n(),
+              emp_prob_last_n = mean({{ stat }} >= {{ line }})) |>
+    filter(games_played >= n_games) |> 
+    arrange(desc(emp_prob_last_n)) |> 
+    mutate(emp_prob_last_n = round(emp_prob_last_n, 3)) |> 
+    select(-games_played)
 }
 
 ##%######################################################%##
