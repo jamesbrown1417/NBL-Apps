@@ -326,6 +326,7 @@ display_player_stats <- function(player_name, season_name, n_games, home_or_away
                pace,
                starter,
                player_points,
+               player_three_pointers_made,
                player_rebounds_total,
                player_assists,
                player_steals,
@@ -342,6 +343,9 @@ display_empirical_probabilities <-
         # Create Label variable
         if (stat == "player_points") {
             label = "Points"
+        }
+        else if (stat == "player_three_pointers_made") {
+            label = "Three Pointers"
         }
         else if (stat == "player_rebounds_total") {
             label = "Rebounds"
@@ -609,6 +613,7 @@ ui <- fluidPage(
                    "Statistic to Display",
                    choices = list(
                      "Points" = "player_points",
+                     "3 Pointers Made" = "player_three_pointers_made",
                      "Rebounds" = "player_rebounds_total",
                      "Assists" = "player_assists"
                    ),
@@ -646,7 +651,9 @@ ui <- fluidPage(
                               choices = unique(player_points_data$agency),
                               multiple = TRUE,
                               selected = unique(player_points_data$agency)),
-               checkboxInput("unders_shown", "Show Only Markets with Both Unders and Overs", value = FALSE)
+               checkboxInput("unders_shown", "Show Only Markets with Both Unders and Overs", value = FALSE),
+               checkboxInput("pos_diff", "Show Only Markets with Positive Difference", value = FALSE),
+               checkboxInput("neg_diff", "Show Only Markets with Negative Difference", value = FALSE),
              ),
              mainPanel(
                h3("Additional Data Table"),
@@ -771,6 +778,12 @@ server <- function(input, output) {
         }
         if (length(input$player_names_props) > 0) {
           data_to_display <- data_to_display |> filter(player_name %in% input$player_names_props)
+        }
+        if (input$pos_diff) {
+          data_to_display <- data_to_display |> filter(diff_last_season > 0 & diff_last_3 > 0 & diff_last_5 > 0)
+        }
+        if (input$neg_diff) {
+          data_to_display <- data_to_display |> filter(diff_last_season < 0 & diff_last_3 < 0 & diff_last_5 < 0)
         }
       }
       
