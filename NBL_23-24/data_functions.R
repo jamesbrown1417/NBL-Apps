@@ -181,7 +181,8 @@ get_historical_data <- function() {
       mutate(family_name = str_replace(family_name, "^Mcdowell$", "McDowell")) |> 
       mutate(match_minutes = as.integer(str_extract(match_minutes, "[0-9]+(?=:)"))) |>
       mutate(match_minutes = round(match_minutes / 5) * 5) |> 
-      mutate(usage = (100*(0.33*player_assists + player_field_goals_attempted + 0.44*player_free_throws_attempted + player_turnovers)) / possessions)
+      mutate(usage = (100*(0.33*player_assists + player_field_goals_attempted + 0.44*player_free_throws_attempted + player_turnovers)) / possessions) |> 
+      mutate(starter = factor(starter, labels = c("Bench", "Starter")))
     }
 
 ##%######################################################%##

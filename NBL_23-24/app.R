@@ -86,7 +86,8 @@ get_player_points_emp_prob <- function(line_value) {
                          line = line_value,
                          stat = player_points,
                          n_games = 3) |> 
-    rename(emp_prob_last_3 = emp_prob_last_n)
+    rename(emp_prob_last_3 = emp_prob_last_n) |> 
+    mutate(line = line_value)
   
   # Last 5
   last_5 <-
@@ -95,21 +96,21 @@ get_player_points_emp_prob <- function(line_value) {
                          line = line_value,
                          stat = player_points,
                          n_games = 5) |> 
-    rename(emp_prob_last_5 = emp_prob_last_n)
+    rename(emp_prob_last_5 = emp_prob_last_n) |> 
+    mutate(line = line_value)
   
-  list(last_season, last_3, last_5) |> reduce(left_join)
+  list(last_season, last_3, last_5) |> reduce(full_join, by = c("player_name", "line"))
 }
 
 player_points_data <-
   player_points_data |>
   mutate(implied_prob_over = round(1/over_price, 3)) |>
-  left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows()) |>
+  left_join(map(unique(player_points_data$line), get_player_points_emp_prob) |> bind_rows(), by = c("player_name", "line")) |>
   mutate(diff_last_season = round(emp_prob_over - implied_prob_over, 3)) |>
   mutate(diff_last_3 = round(emp_prob_last_3 - implied_prob_over, 3)) |>
   mutate(diff_last_5 = round(emp_prob_last_5 - implied_prob_over, 3)) |>
   select(-games_played) |> 
   ungroup()
-
 
 # Assists
 get_player_assists_emp_prob <- function(line_value) {
@@ -310,7 +311,7 @@ get_player_team_mates <-
 }
 
 # Create function to filter and display player data
-display_player_stats <- function(player_name, season_name, n_games, home_or_away = c("home", "away")) {
+display_player_stats <- function(player_name, season_name, n_games, home_or_away = c("home", "away"), starter_status = c("Bench", "Starter")) {
   combined_stats_table |>
         mutate(player_full_name = paste(first_name, family_name)) |>
         filter(player_full_name == player_name) |>
@@ -327,6 +328,9 @@ display_player_stats <- function(player_name, season_name, n_games, home_or_away
                starter,
                player_points,
                player_three_pointers_made,
+               player_two_pointers_attempted,
+               player_field_goals_attempted,
+               player_three_pointers_attempted,
                player_rebounds_total,
                player_assists,
                player_steals,
@@ -334,7 +338,8 @@ display_player_stats <- function(player_name, season_name, n_games, home_or_away
                player_minutes
                ) |> 
         slice_head(n = n_games) |> 
-    filter(home_away %in% home_or_away)
+    filter(home_away %in% home_or_away) |> 
+    filter(starter %in% starter_status)
 }
 
 # Function to plot hit rate for prop lines
@@ -412,8 +417,9 @@ with_without <- function(player_name, team_mate, season_name) {
     full_table <-
     combined_stats_table |>
         mutate(player_full_name = paste(first_name, family_name)) |>
-        filter(season == season_name)
-    
+        filter(season == season_name) |> 
+        mutate(minutes_played = period_to_seconds(ms(player_minutes)) / 60)
+      
     # Player games played
     player_games <-
     full_table |> 
@@ -432,7 +438,7 @@ with_without <- function(player_name, team_mate, season_name) {
         filter(match_id %in% player_games$match_id & match_id %in% team_mate_games$match_id) |>
         filter(player_full_name == player_name) |>
         group_by(player_full_name) |>
-        summarise(ppg = mean(player_points), apg = mean(player_assists), rpg = mean(player_rebounds_total), games = n()) |>
+        summarise(mins = mean(minutes_played), ppg = mean(player_points), apg = mean(player_assists), rpg = mean(player_rebounds_total), games = n()) |>
         mutate(teammate = team_mate, with_teammate = TRUE)
         
     
@@ -442,13 +448,13 @@ with_without <- function(player_name, team_mate, season_name) {
         filter(match_id %in% player_games$match_id & match_id %notin% team_mate_games$match_id) |>
         filter(player_full_name == player_name) |> 
         group_by(player_full_name) |>
-        summarise(ppg = mean(player_points), apg = mean(player_assists), rpg = mean(player_rebounds_total), games = n()) |>
+        summarise(mins = mean(minutes_played), ppg = mean(player_points), apg = mean(player_assists), rpg = mean(player_rebounds_total), games = n()) |>
         mutate(teammate = team_mate, with_teammate = FALSE)
     
     # Combine and output
     bind_rows(both, just_player) |>
         relocate(teammate, with_teammate, .after =  player_full_name) |> 
-      mutate(ppg = round(ppg, 2), apg = round(apg, 2), rpg = round(rpg, 2))
+      mutate(mins = round(mins, 2), ppg = round(ppg, 2), apg = round(apg, 2), rpg = round(rpg, 2))
 }
 
 # Performance vs team-----------------------------------------------------------
@@ -609,6 +615,14 @@ ui <- fluidPage(
                    selectize = TRUE
                  ),
                  selectInput(
+                   "starter",
+                   "Starter or Bench?",
+                   choices = list("Starter" = "Starter", "Bench" = "Bench"),
+                   multiple = TRUE,
+                   selected = c("Starter", "Bench"),
+                   selectize = TRUE
+                 ),
+                 selectInput(
                    "stat",
                    "Statistic to Display",
                    choices = list(
@@ -733,11 +747,11 @@ ui <- fluidPage(
 server <- function(input, output) {
     
     output$player_stats_table <- renderDataTable({
-        display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only)
+        display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only, input$starter)
     })
     
     output$player_stats_plot <- renderPlot({
-        data <- display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only)
+        data <- display_player_stats(input$player_name, input$season_name, input$n_games, input$home_games_only, input$starter)
         display_empirical_probabilities(data, input$stat, input$line)
     })
     
